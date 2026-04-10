@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HVAC Vendor Quote Comparison</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f1117;
+    color: #e8eaf0;
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a1f2e 0%, #0f1117 100%);
+    border-bottom: 1px solid #2a3045;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .header-icon {
+    width: 40px; height: 40px;
+    background: #2563eb;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+  .header h1 { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+  .header p { font-size: 13px; color: #8892a4; margin-top: 2px; }
+
+  .main { padding: 32px; max-width: 1400px; margin: 0 auto; }
+
+  .upload-section { margin-bottom: 32px; }
+  .upload-zone {
+    border: 2px dashed #2a3a5c;
+    border-radius: 16px;
+    padding: 48px 32px;
+    text-align: center;
+    background: #141825;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: #2563eb;
+    background: #151c2e;
+  }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+  .upload-icon { font-size: 40px; margin-bottom: 12px; }
+  .upload-zone h2 { font-size: 17px; font-weight: 600; color: #c8d0e0; margin-bottom: 6px; }
+  .upload-zone p { font-size: 13px; color: #5a6882; }
+  .upload-zone .supported { margin-top: 12px; }
+  .tag {
+    display: inline-block;
+    background: #1e2740;
+    border: 1px solid #2a3a5c;
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 11px;
+    color: #6b7fa0;
+    margin: 3px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  .status-bar {
+    background: #141825;
+    border: 1px solid #2a3a5c;
+    border-radius: 10px;
+    padding: 12px 20px;
+    margin-bottom: 24px;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px;
+  }
+  .status-bar .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
+  .status-bar.loading .dot { background: #f59e0b; animation: pulse 1s infinite; }
+  .status-bar.error .dot { background: #ef4444; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .ai-processing {
+    background: linear-gradient(135deg, #141825, #1a2035);
+    border: 1px solid #2563eb33;
+    border-radius: 16px;
+    padding: 32px;
+    text-align: center;
+    display: none;
+  }
+  .ai-processing.active { display: block; }
+  .spinner {
+    width: 48px; height: 48px;
+    border: 3px solid #1e2a45;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ai-processing h3 { font-size: 16px; font-weight: 600; color: #c8d0e0; margin-bottom: 6px; }
+  .ai-processing p { font-size: 13px; color: #5a6882; }
+  .progress-steps { margin-top: 20px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .step { font-size: 12px; color: #4a5a78; padding: 4px 0; transition: color 0.3s; }
+  .step.active { color: #60a5fa; }
+  .step.done { color: #22c55e; }
+
+  .results { display: none; }
+  .results.active { display: block; }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .toolbar-left { display: flex; gap: 8px; flex-wrap: wrap; }
+  .filter-btn {
+    background: #1e2740;
+    border: 1px solid #2a3a5c;
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #7a8aaa;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover, .filter-btn.active {
+    background: #2563eb22;
+    border-color: #2563eb66;
+    color: #60a5fa;
+  }
+  .export-btn {
+    background: #2563eb;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .export-btn:hover { background: #1d4fd8; }
+
+  .project-banner {
+    background: #141825;
+    border: 1px solid #2a3a5c;
+    border-radius: 12px;
+    padding: 16px 24px;
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+  }
+  .project-field label { font-size: 11px; color: #5a6882; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; display: block; margin-bottom: 4px; }
+  .project-field span { font-size: 14px; color: #c8d0e0; font-weight: 500; }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .summary-card {
+    background: #141825;
+    border: 1px solid #2a3a5c;
+    border-radius: 12px;
+    padding: 16px 20px;
+  }
+  .summary-card label { font-size: 11px; color: #5a6882; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; display: block; margin-bottom: 6px; }
+  .summary-card .value { font-size: 22px; font-weight: 700; color: #e8eaf0; }
+  .summary-card .sub { font-size: 11px; color: #5a6882; margin-top: 2px; }
+  .summary-card.savings { border-color: #22c55e44; }
+  .summary-card.savings .value { color: #22c55e; }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #6b7fa0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1e2740;
+  }
+  .table-wrap { overflow-x: auto; margin-bottom: 32px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    background: #141825;
+    color: #6b7fa0;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid #2a3a5c;
+    white-space: nowrap;
+  }
+  td {
+    padding: 11px 14px;
+    border-bottom: 1px solid #1a2035;
+    color: #c8d0e0;
+    vertical-align: top;
+  }
+  tr:hover td { background: #151c2e; }
+  .subtotal-row td {
+    background: #1a2035;
+    font-weight: 700;
+    color: #e8eaf0;
+    border-top: 1px solid #2a3a5c;
+    border-bottom: 1px solid #2a3a5c;
+  }
+  .vendor-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .v-carrier { background: #1e3a5c; color: #60a5fa; }
+  .v-ecoair { background: #1a3a26; color: #4ade80; }
+  .v-stanweaver { background: #3a2a1a; color: #fb923c; }
+  .v-tombarrow { background: #2a1a3a; color: #c084fc; }
+  .v-sita { background: #1a2e3a; color: #38bdf8; }
+  .v-travis { background: #3a2a1e; color: #fbbf24; }
+
+  .price-cell { font-weight: 600; color: #e8eaf0; font-variant-numeric: tabular-nums; }
+  .low-bid { color: #22c55e !important; }
+  .low-badge {
+    display: inline-block;
+    background: #14532d;
+    color: #4ade80;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-left: 6px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+  .warn-badge {
+    display: inline-block;
+    background: #451a03;
+    color: #fbbf24;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-left: 6px;
+    letter-spacing: 0.3px;
+  }
+
+  .savings-table td:first-child { font-weight: 500; }
+  .savings-pct { color: #22c55e; font-weight: 600; }
+
+  .vendor-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .vtab {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #2a3a5c;
+    background: #1e2740;
+    color: #7a8aaa;
+    transition: all 0.15s;
+  }
+  .vtab.active { border-color: #2563eb66; background: #2563eb22; color: #60a5fa; }
+
+  .detail-panel {
+    background: #141825;
+    border: 1px solid #2a3a5c;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+  .detail-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid #2a3a5c;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .detail-header h3 { font-size: 14px; font-weight: 600; color: #e8eaf0; }
+  .detail-header span { font-size: 12px; color: #5a6882; }
+  .detail-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .detail-table th {
+    background: #0f1117;
+    padding: 8px 14px;
+    font-size: 10px;
+    color: #5a6882;
+  }
+  .detail-table td { padding: 9px 14px; border-bottom: 1px solid #1a2035; color: #a0aec0; }
+  .detail-table tr:last-child td { border-bottom: none; }
+
+  .empty { text-align: center; padding: 60px 20px; color: #4a5a78; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-icon">🔧</div>
+  <div>
+    <h1>HVAC Vendor Quote Analyzer</h1>
+    <p>Upload quote files — AI extracts, compares, and builds your comparison spreadsheet</p>
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="upload-section" id="uploadSection">
+    <div class="upload-zone" id="dropZone">
+      <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.csv,.pdf,.txt,.msg,.eml" />
+      <div class="upload-icon">📁</div>
+      <h2>Drop your quote files here or click to browse</h2>
+      <p>Select a folder or multiple files — PDFs, Excel sheets, CSV exports, email files</p>
+      <div class="supported">
+        <span class="tag">XLSX / XLS</span>
+        <span class="tag">CSV</span>
+        <span class="tag">PDF</span>
+        <span class="tag">TXT</span>
+        <span class="tag">Multiple files</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar" id="statusBar" style="display:none">
+    <div class="dot"></div>
+    <span id="statusText">Ready</span>
+  </div>
+
+  <div class="ai-processing" id="aiProcessing">
+    <div class="spinner"></div>
+    <h3>Analyzing your vendor quotes...</h3>
+    <p>Claude AI is extracting and comparing all pricing, scope, and vendor details</p>
+    <div class="progress-steps" id="progressSteps">
+      <div class="step" id="step1">📄 Reading uploaded files...</div>
+      <div class="step" id="step2">🤖 Sending to Claude AI for analysis...</div>
+      <div class="step" id="step3">📊 Extracting vendor & pricing data...</div>
+      <div class="step" id="step4">✅ Building comparison spreadsheet...</div>
+    </div>
+  </div>
+
+  <div class="results" id="results"></div>
+
+</div>
+
+<script>
+const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const statusBar = document.getElementById('statusBar');
+const statusText = document.getElementById('statusText');
+const aiProcessing = document.getElementById('aiProcessing');
+const resultsDiv = document.getElementById('results');
+
+let parsedData = null;
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+function showStatus(msg, type = 'normal') {
+  statusBar.style.display = 'flex';
+  statusBar.className = 'status-bar ' + type;
+  statusText.textContent = msg;
+}
+
+function setStep(n) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById('step' + i);
+    if (i < n) el.className = 'step done';
+    else if (i === n) el.className = 'step active';
+    else el.className = 'step';
+  }
+}
+
+async function handleFiles(files) {
+  if (!files || files.length === 0) return;
+  showStatus(`Reading ${files.length} file(s)...`, 'loading');
+  aiProcessing.classList.add('active');
+  resultsDiv.classList.remove('active');
+  resultsDiv.innerHTML = '';
+  setStep(1);
+
+  try {
+    const fileContents = [];
+    for (const file of files) {
+      const content = await readFileAsText(file);
+      fileContents.push({ name: file.name, content: content.substring(0, 8000) });
+    }
+
+    setStep(2);
+    showStatus('Sending to Claude AI for analysis...', 'loading');
+
+    const prompt = buildPrompt(fileContents);
+    const aiResponse = await callClaude(prompt);
+
+    setStep(3);
+    showStatus('Parsing AI response...', 'loading');
+
+    parsedData = parseAIResponse(aiResponse);
+
+    setStep(4);
+    showStatus('Building comparison view...', 'loading');
+
+    await new Promise(r => setTimeout(r, 400));
+
+    aiProcessing.classList.remove('active');
+    renderResults(parsedData);
+    showStatus(`Analysis complete — ${parsedData.vendors.length} vendors, ${parsedData.lineItems.length} line items extracted`, 'normal');
+
+  } catch (err) {
+    aiProcessing.classList.remove('active');
+    showStatus('Error: ' + err.message, 'error');
+    console.error(err);
+  }
+}
+
+async function readFileAsText(file) {
+  return new Promise((resolve) => {
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target.result, { type: 'binary' });
+          let text = `FILE: ${file.name}\n`;
+          wb.SheetNames.forEach(name => {
+            text += `\n=== Sheet: ${name} ===\n`;
+            const ws = wb.Sheets[name];
+            text += XLSX.utils.sheet_to_csv(ws) + '\n';
+          });
+          resolve(text);
+        } catch (err) {
+          resolve(`FILE: ${file.name}\n[Could not parse Excel: ${err.message}]`);
+        }
+      };
+      reader.readAsBinaryString(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(`FILE: ${file.name}\n${e.target.result}`);
+      reader.onerror = () => resolve(`FILE: ${file.name}\n[Could not read file]`);
+      reader.readAsText(file);
+    }
+  });
+}
+
+function buildPrompt(fileContents) {
+  const filesText = fileContents.map(f => `\n=== ${f.name} ===\n${f.content}`).join('\n\n');
+  return `You are an HVAC project manager's assistant. Analyze these vendor quote files and extract all pricing data for comparison.
+
+FILES:
+${filesText}
+
+Extract and return ONLY valid JSON (no markdown, no explanation) with this exact structure:
+{
+  "project": {
+    "name": "project name",
+    "location": "location if found",
+    "compiled_by": "company if found",
+    "date": "date if found"
+  },
+  "vendors": [
+    {
+      "id": "short_id",
+      "name": "Full Vendor Name",
+      "short": "Short Name",
+      "contact": "contact info if found",
+      "terms": "payment terms if found",
+      "bid_date": "date",
+      "expiration": "expiration date"
+    }
+  ],
+  "lineItems": [
+    {
+      "num": 1,
+      "vendor_id": "matching vendor id",
+      "vendor_name": "vendor name",
+      "scope": "scope of work description",
+      "category": "category (RTUs, Fans, Air Distribution, Heater, Grease Duct, Kitchen Exhaust, TAB, Commissioning, etc)",
+      "qty": "quantity",
+      "unit_price": null or number,
+      "total_price": number or null,
+      "includes_tax": "Yes/No/+Tax",
+      "notes": "key notes",
+      "manufacturer": "manufacturer brand if specified"
+    }
+  ],
+  "comparisons": [
+    {
+      "category": "category name",
+      "scope_desc": "brief scope description",
+      "vendors": [
+        {
+          "vendor_id": "id",
+          "vendor_name": "name",
+          "price": number,
+          "manufacturer": "brand",
+          "notes": "key differentiators",
+          "is_low_bid": true or false
+        }
+      ],
+      "potential_savings": number
+    }
+  ],
+  "subtotals": [
+    { "vendor_id": "id", "vendor_name": "name", "total": number }
+  ],
+  "total_potential_savings": number
+}
+
+Return ONLY the JSON object. No other text.`;
+}
+
+async function callClaude(prompt) {
+  const response = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`API error ${response.status}: ${err.substring(0, 200)}`);
+  }
+
+  const data = await response.json();
+  return data.content.map(b => b.text || '').join('');
+}
+
+function parseAIResponse(text) {
+  const clean = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  try {
+    return JSON.parse(clean);
+  } catch (e) {
+    const match = clean.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('Could not parse AI response as JSON');
+  }
+}
+
+function fmt(n) {
+  if (n == null) return '—';
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function vendorClass(name) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('carrier') || n.includes('ce florida')) return 'v-carrier';
+  if (n.includes('econ') || n.includes('captive')) return 'v-ecoair';
+  if (n.includes('weaver') || n.includes('stan')) return 'v-stanweaver';
+  if (n.includes('barrow') || n.includes('tom')) return 'v-tombarrow';
+  if (n.includes('sita') || n.includes('southern')) return 'v-sita';
+  if (n.includes('travis') || n.includes('leonard')) return 'v-travis';
+  return 'v-carrier';
+}
+
+function renderResults(data) {
+  const p = data.project || {};
+  const vendors = data.vendors || [];
+  const lineItems = data.lineItems || [];
+  const comparisons = data.comparisons || [];
+  const subtotals = data.subtotals || [];
+  const totalSavings = data.total_potential_savings || 0;
+  const grandTotal = subtotals.reduce((s, v) => s + (v.total || 0), 0);
+  const categories = [...new Set(lineItems.map(l => l.category).filter(Boolean))];
+
+  let html = '';
+
+  html += `<div class="project-banner">
+    <div class="project-field"><label>Project</label><span>${p.name || '—'}</span></div>
+    <div class="project-field"><label>Location</label><span>${p.location || '—'}</span></div>
+    <div class="project-field"><label>Compiled By</label><span>${p.compiled_by || '—'}</span></div>
+    <div class="project-field"><label>Date</label><span>${p.date || '—'}</span></div>
+    <div class="project-field"><label>Vendors</label><span>${vendors.length}</span></div>
+    <div class="project-field"><label>Line Items</label><span>${lineItems.length}</span></div>
+  </div>`;
+
+  html += `<div class="summary-grid">
+    <div class="summary-card">
+      <label>Total Quotes Received</label>
+      <div class="value">${subtotals.length}</div>
+      <div class="sub">vendors responded</div>
+    </div>
+    <div class="summary-card">
+      <label>Combined All Vendors</label>
+      <div class="value">${fmt(grandTotal)}</div>
+      <div class="sub">sum of all bids</div>
+    </div>
+    <div class="summary-card savings">
+      <label>Potential Savings</label>
+      <div class="value">${fmt(totalSavings)}</div>
+      <div class="sub">vs. highest bids per category</div>
+    </div>
+    <div class="summary-card">
+      <label>Comparable Categories</label>
+      <div class="value">${comparisons.length}</div>
+      <div class="sub">competing bid categories</div>
+    </div>
+  </div>`;
+
+  html += `<div class="toolbar">
+    <div class="toolbar-left">
+      <button class="filter-btn active" onclick="filterTable('all', this)">All Items</button>
+      ${categories.map(c => `<button class="filter-btn" onclick="filterTable('${c.replace(/'/g,"\\'")}', this)">${c}</button>`).join('')}
+    </div>
+    <button class="export-btn" onclick="exportExcel()">⬇ Export .xlsx</button>
+  </div>`;
+
+  html += `<div class="section-title">All Vendor Line Items</div>
+  <div class="table-wrap">
+  <table id="mainTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Vendor</th>
+        <th>Category</th>
+        <th>Scope of Work</th>
+        <th>Manufacturer</th>
+        <th>Qty / Unit</th>
+        <th>Total Price</th>
+        <th>Tax</th>
+        <th>Bid Date</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  const byVendor = {};
+  lineItems.forEach(item => {
+    const key = item.vendor_id || item.vendor_name;
+    if (!byVendor[key]) byVendor[key] = [];
+    byVendor[key].push(item);
+  });
+
+  const vendorMap = {};
+  vendors.forEach(v => { vendorMap[v.id] = v; });
+
+  let num = 1;
+  Object.entries(byVendor).forEach(([vid, items]) => {
+    const vendor = vendorMap[vid] || {};
+    items.forEach(item => {
+      const vname = item.vendor_name || vendor.name || vid;
+      const vc = vendorClass(vname);
+      html += `<tr data-category="${(item.category || '').replace(/"/g,'')}" class="data-row">
+        <td style="color:#5a6882;font-size:11px">${num++}</td>
+        <td><span class="vendor-badge ${vc}">${item.vendor_name || vname}</span></td>
+        <td style="color:#8892a4;font-size:12px">${item.category || '—'}</td>
+        <td style="max-width:280px;word-wrap:break-word">${item.scope || '—'}</td>
+        <td style="color:#8892a4">${item.manufacturer || '—'}</td>
+        <td style="color:#8892a4">${item.qty || '—'}</td>
+        <td class="price-cell">${fmt(item.total_price)}</td>
+        <td style="font-size:12px;color:#5a6882">${item.includes_tax || '—'}</td>
+        <td style="font-size:12px;color:#5a6882;white-space:nowrap">${vendor.bid_date || '—'}</td>
+        <td style="max-width:200px;word-wrap:break-word;font-size:12px;color:#7a8aaa">${item.notes || '—'}</td>
+      </tr>`;
+    });
+
+    const sub = subtotals.find(s => s.vendor_id === vid || s.vendor_name === items[0].vendor_name);
+    if (sub) {
+      html += `<tr class="subtotal-row" data-category="subtotal">
+        <td colspan="6" style="text-align:right;padding-right:20px;font-size:12px;color:#8892a4">
+          ${sub.vendor_name} — SUBTOTAL
+        </td>
+        <td class="price-cell" style="font-size:15px">${fmt(sub.total)}</td>
+        <td colspan="3"></td>
+      </tr>`;
+    }
+  });
+
+  html += `</tbody></table></div>`;
+
+  if (comparisons.length > 0) {
+    html += `<div class="section-title" style="margin-top:8px">Competing Bid Comparison</div>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Scope</th>
+          <th>Vendor</th>
+          <th>Manufacturer</th>
+          <th>Bid Price</th>
+          <th>vs. High Bid</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+    comparisons.forEach(comp => {
+      const sorted = [...(comp.vendors || [])].sort((a, b) => (a.price || 0) - (b.price || 0));
+      const highBid = Math.max(...sorted.map(v => v.price || 0));
+
+      sorted.forEach((v, i) => {
+        const savings = highBid - (v.price || 0);
+        const pct = highBid > 0 ? ((savings / highBid) * 100).toFixed(1) : 0;
+        const vc = vendorClass(v.vendor_name);
+        html += `<tr>
+          ${i === 0 ? `<td rowspan="${sorted.length}" style="font-weight:600;color:#e8eaf0;vertical-align:top">${comp.category}</td>` : ''}
+          ${i === 0 ? `<td rowspan="${sorted.length}" style="font-size:12px;color:#8892a4;vertical-align:top">${comp.scope_desc || '—'}</td>` : ''}
+          <td>
+            <span class="vendor-badge ${vc}">${v.vendor_name}</span>
+            ${v.is_low_bid ? '<span class="low-badge">LOW BID</span>' : ''}
+          </td>
+          <td style="font-size:12px;color:#8892a4">${v.manufacturer || '—'}</td>
+          <td class="price-cell ${v.is_low_bid ? 'low-bid' : ''}">${fmt(v.price)}</td>
+          <td class="savings-pct">${savings > 0 ? '–' + fmt(savings) + ' (' + pct + '%)' : '—'}</td>
+          <td style="font-size:12px;color:#7a8aaa;max-width:200px">${v.notes || '—'}</td>
+        </tr>`;
+      });
+
+      html += `<tr style="background:#1a2035">
+        <td colspan="2" style="padding:6px 14px;font-size:11px;color:#5a6882;text-align:right">
+          Potential savings in this category:
+        </td>
+        <td colspan="4" style="padding:6px 14px;font-size:13px;font-weight:700;color:#22c55e">
+          ${fmt(comp.potential_savings)}
+        </td>
+      </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+  }
+
+  if (comparisons.length > 0) {
+    html += `<div class="section-title">Potential Savings Summary</div>
+    <div class="table-wrap">
+    <table class="savings-table">
+      <thead>
+        <tr>
+          <th>Scope / Category</th>
+          <th>High Bid Vendor</th>
+          <th>High Bid $</th>
+          <th>Low Bid Vendor</th>
+          <th>Low Bid $</th>
+          <th>Savings $</th>
+          <th>Savings %</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+    comparisons.forEach(comp => {
+      const sorted = [...(comp.vendors || [])].sort((a, b) => (a.price || 0) - (b.price || 0));
+      if (sorted.length < 2) return;
+      const low = sorted[0];
+      const high = sorted[sorted.length - 1];
+      const savings = (high.price || 0) - (low.price || 0);
+      const pct = high.price > 0 ? ((savings / high.price) * 100).toFixed(1) : 0;
+      html += `<tr>
+        <td>${comp.category}</td>
+        <td><span class="vendor-badge ${vendorClass(high.vendor_name)}">${high.vendor_name}</span></td>
+        <td class="price-cell">${fmt(high.price)}</td>
+        <td><span class="vendor-badge ${vendorClass(low.vendor_name)}">${low.vendor_name}</span></td>
+        <td class="price-cell low-bid">${fmt(low.price)}</td>
+        <td class="price-cell low-bid">${fmt(savings)}</td>
+        <td class="savings-pct">${pct}%</td>
+      </tr>`;
+    });
+
+    html += `<tr class="subtotal-row">
+      <td colspan="5" style="text-align:right;padding-right:20px">TOTAL POTENTIAL SAVINGS</td>
+      <td class="price-cell" style="color:#22c55e;font-size:15px">${fmt(totalSavings)}</td>
+      <td></td>
+    </tr>`;
+    html += `</tbody></table></div>`;
+  }
+
+  html += `<div class="section-title">Vendor Details</div>
+  <div class="vendor-tabs" id="vendorTabs">`;
+  vendors.forEach((v, i) => {
+    html += `<div class="vtab ${i === 0 ? 'active' : ''}" onclick="showVendor('${v.id}', this)">${v.short || v.name}</div>`;
+  });
+  html += `</div>`;
+
+  vendors.forEach((v, i) => {
+    const vItems = lineItems.filter(l => l.vendor_id === v.id || l.vendor_name === v.name);
+    const vSub = subtotals.find(s => s.vendor_id === v.id);
+    html += `<div class="detail-panel vendor-detail" id="vd-${v.id}" style="${i !== 0 ? 'display:none' : ''}">
+      <div class="detail-header">
+        <h3><span class="vendor-badge ${vendorClass(v.name)}" style="font-size:12px;margin-right:8px">${v.short || v.name}</span>${v.name}</h3>
+        <span>${v.contact || ''} ${v.terms ? '· ' + v.terms : ''} ${v.bid_date ? '· Bid: ' + v.bid_date : ''} ${v.expiration ? '· Exp: ' + v.expiration : ''}</span>
+      </div>
+      <table class="detail-table">
+        <thead><tr><th>Category</th><th>Scope</th><th>Manufacturer</th><th>Qty</th><th>Price</th><th>Notes</th></tr></thead>
+        <tbody>
+          ${vItems.map(item => `<tr>
+            <td>${item.category || '—'}</td>
+            <td style="max-width:300px">${item.scope || '—'}</td>
+            <td>${item.manufacturer || '—'}</td>
+            <td>${item.qty || '—'}</td>
+            <td style="font-weight:600;color:#e8eaf0">${fmt(item.total_price)}</td>
+            <td style="max-width:200px">${item.notes || '—'}</td>
+          </tr>`).join('')}
+          ${vSub ? `<tr style="background:#1a2035;font-weight:700"><td colspan="4" style="text-align:right;color:#8892a4">TOTAL</td><td style="color:#e8eaf0;font-size:14px">${fmt(vSub.total)}</td><td></td></tr>` : ''}
+        </tbody>
+      </table>
+    </div>`;
+  });
+
+  resultsDiv.innerHTML = html;
+  resultsDiv.classList.add('active');
+}
+
+function filterTable(cat, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#mainTable .data-row').forEach(row => {
+    if (cat === 'all') {
+      row.style.display = '';
+    } else {
+      row.style.display = (row.dataset.category === cat) ? '' : 'none';
+    }
+  });
+}
+
+function showVendor(vid, tab) {
+  document.querySelectorAll('.vtab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  document.querySelectorAll('.vendor-detail').forEach(d => d.style.display = 'none');
+  const el = document.getElementById('vd-' + vid);
+  if (el) el.style.display = '';
+}
+
+function exportExcel() {
+  if (!parsedData) return;
+  const wb = XLSX.utils.book_new();
+  const p = parsedData.project || {};
+
+  const summaryRows = [
+    [`${p.name || 'HVAC PROJECT'} — VENDOR QUOTE SUMMARY`],
+    [`Project: ${p.name || ''} | Location: ${p.location || ''} | ${p.compiled_by || ''} | Date: ${p.date || ''}`],
+    [],
+    ['#', 'VENDOR / COMPANY', 'SCOPE OF WORK', 'QTY / UNIT', 'TOTAL BID PRICE', 'INCLUDES TAX?', 'QUOTE DATE', 'NOTES']
+  ];
+
+  let n = 1;
+  (parsedData.lineItems || []).forEach(item => {
+    summaryRows.push([n++, item.vendor_name, item.scope, item.qty, item.total_price, item.includes_tax, '', item.notes]);
+  });
+
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+  wsSummary['!cols'] = [{wch:5},{wch:28},{wch:55},{wch:14},{wch:16},{wch:14},{wch:12},{wch:40}];
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'SUMMARY');
+
+  const compRows = [
+    [`${p.name || 'PROJECT'} — COMPETING BID COMPARISON`],
+    [`Side-by-side comparison | Compiled by ${p.compiled_by || ''} | ${p.date || ''}`],
+    [],
+  ];
+
+  (parsedData.comparisons || []).forEach(comp => {
+    compRows.push([comp.category.toUpperCase()]);
+    compRows.push(['VENDOR', 'COMPANY', 'MANUFACTURER', 'QTY / UNIT', 'BID PRICE', 'NOTES', 'RECOMMENDATION', 'SAVINGS vs HIGH BID']);
+    const sorted = [...(comp.vendors || [])].sort((a, b) => (b.price||0) - (a.price||0));
+    const highBid = sorted[0]?.price || 0;
+    sorted.forEach(v => {
+      const savings = highBid - (v.price || 0);
+      compRows.push([v.vendor_id || '', v.vendor_name, v.manufacturer || '', '', v.price, v.notes || '', v.is_low_bid ? '✅ LOW BID' : '', savings > 0 ? savings : '—']);
+    });
+    compRows.push([]);
+  });
+
+  if ((parsedData.comparisons || []).length > 0) {
+    compRows.push(['POTENTIAL SAVINGS — Using Lowest Bid Per Scope']);
+    compRows.push(['SCOPE', 'HIGH BID VENDOR', 'HIGH BID $', 'LOW BID VENDOR', 'LOW BID $', 'SAVINGS $', 'SAVINGS %']);
+    (parsedData.comparisons || []).forEach(comp => {
+      const sorted = [...(comp.vendors || [])].sort((a, b) => (a.price||0) - (b.price||0));
+      if (sorted.length >= 2) {
+        const low = sorted[0], high = sorted[sorted.length - 1];
+        const savings = (high.price||0) - (low.price||0);
+        const pct = high.price > 0 ? (savings / high.price) : 0;
+        compRows.push([comp.category, high.vendor_name, high.price, low.vendor_name, low.price, savings, pct]);
+      }
+    });
+    compRows.push(['TOTAL POTENTIAL SAVINGS', '', '', '', '', parsedData.total_potential_savings || 0]);
+  }
+
+  const wsComp = XLSX.utils.aoa_to_sheet(compRows);
+  wsComp['!cols'] = [{wch:20},{wch:28},{wch:28},{wch:14},{wch:14},{wch:45},{wch:18},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, wsComp, 'BID COMPARISON');
+
+  XLSX.writeFile(wb, `${(p.name || 'HVAC_Project').replace(/\s+/g,'_')}_Vendor_Quote_Comparison.xlsx`);
+}
+</script>
+</body>
+</html>
